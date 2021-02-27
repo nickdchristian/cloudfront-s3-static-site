@@ -1,0 +1,440 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Conditions:
+  DefaultLoggingPrefix: !Not
+    - !Equals
+      - !Ref 'LoggingPrefix'
+      - /
+  DontUseCustomDomain: !Not
+    - !Equals
+      - !Ref 'UseCustomDomain'
+      - 'true'
+  EnabledLogging: !Not
+    - !Equals
+      - !Ref 'LoggingBucket'
+      - ''
+  NoStoreCache: !Equals
+    - !Ref 'StoreCache'
+    - 'false'
+  SeperateErrorResponse: !Equals
+    - !Ref 'ErrorResponse'
+    - seperate
+  SinglePageErrorResponse: !Equals
+    - !Ref 'ErrorResponse'
+    - single-page
+  UploadSiteSource: !Equals
+    - !Ref 'UploadWebsiteSource'
+    - 'true'
+  UseCustomDomainName: !Equals
+    - !Ref 'UseCustomDomain'
+    - 'true'
+  UseDeepLinkIndexHtml: !Equals
+    - !Ref 'UseIndexHtmlOnDeepLinks'
+    - 'true'
+  UseRoute53: !Equals
+    - !Ref 'UseRoute53ForDNS'
+    - 'true'
+  UseSecurityHeaders: !Equals
+    - !Ref 'UseHttpSecurityHeaders'
+    - 'true'
+Description: Creates a CloudFront distribution with an S3 origin to host a static
+  website.
+Outputs:
+  BucketArn:
+    Description: ARN of the S3 website bucket.
+    Value: !GetAtt 'WebsiteBucket.Arn'
+  BucketName:
+    Description: Name of the S3 website bucket.
+    Value: !Ref 'WebsiteBucket'
+  CloudFrontUrl:
+    Description: HTTPS CloudFront URL for the website
+    Value: !Sub 'https://WebsiteCloudfront.DomainName'
+  WebsiteUrl:
+    Condition: UseRoute53
+    Description: HTTPS URL For the website through the provided domain name
+    Value: !Sub 'https://${DomainName}'
+Parameters:
+  AcmCertificateArn:
+    Description: The Amazon Resource Name (ARN) of an AWS Certificate Manager (ACM)
+      for your domain name certificate.
+    Type: String
+  DomainName:
+    Description: The DNS name of the website, such as example.com.
+    Type: String
+  ErrorResponse:
+    AllowedValues:
+      - single-page
+      - seperate
+      - none
+    Description: Single-page applications can handle their own error responses. Single-page
+      returns 403 and 404 errors to /index.html as a 200 response, seperate points
+      those files to /403.html and /404.html respectively, none does not handle 403
+      and 404 errors.
+    Type: String
+  HostedZoneId:
+    Description: The ID of the Hosted Zone of the domain name.
+    Type: AWS::Route53::HostedZone::Id
+  LoggingBucket:
+    Default: ''
+    Description: Name of the logging bucket where CloudFront and S3  will reside.
+      If a logging bucket is not specified, logging will be disabled.
+    Type: String
+  LoggingPrefix:
+    AllowedPattern: .*\/$
+    Default: /
+    Description: An optional string to prefix the log filenames in the logging bucket.
+      S3/ or CloudFront/ will automatically prefix the log filenames, for example
+      S3 bucket  will prefixed as YourPrefix/S3/.
+    Type: String
+  StoreCache:
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Default: 'true'
+    Description: Set to false to not store cache.
+    Type: String
+  UploadWebsiteSource:
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Default: 'true'
+    Description: The custom resource will fail to upload if the website source is
+      too big. Set this to false to disable it.
+    Type: String
+  UseCustomDomain:
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Default: 'true'
+    Description: If there is a custom domain being used with this set, set to true.
+    Type: String
+  UseHttpSecurityHeaders:
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Default: 'true'
+    Description: HTTP security headers mitigate attacks and harden against security
+      vulnerabilities. Tailor the function in functions/security-headers/ to the needs
+      of the website for full protection.
+    Type: String
+  UseIndexHtmlOnDeepLinks:
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Default: 'false'
+    Description: Some static site generators always use index.html on the end of their
+      deep links. Using this Lambda edge function example.com/foo/index.html will
+      become example.com/foo/.
+    Type: String
+  UseRoute53ForDNS:
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Default: 'true'
+    Description: If using a DNS service other than Route 53, set to false.
+    Type: String
+  WebsitePath:
+    Default: 'web-site/'
+    Description: The relative path to the contents of the website. Leave blank if uploading separately.
+    Type: String
+Resources:
+  BucketPolicy:
+    Properties:
+      Bucket: !Ref 'WebsiteBucket'
+      PolicyDocument:
+        Statement:
+          - Action: s3:GetObject
+            Effect: Allow
+            Principal:
+              CanonicalUser: !GetAtt 'CloudFrontOriginAccessIdentity.S3CanonicalUserId'
+            Resource: !Sub '${WebsiteBucket.Arn}/*'
+          - Action: s3:ListBucket
+            Effect: Allow
+            Principal:
+              CanonicalUser: !GetAtt 'CloudFrontOriginAccessIdentity.S3CanonicalUserId'
+            Resource: !GetAtt 'WebsiteBucket.Arn'
+    Type: AWS::S3::BucketPolicy
+  CloudFrontOriginAccessIdentity:
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub 'Access identity for ${WebsiteBucket}'
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+  DeepLinkIndexFunction:
+    Condition: UseDeepLinkIndexHtml
+    Properties:
+      AutoPublishAlias: live
+      CodeUri: functions/deeplink-index/
+      Handler: index.handler
+      Role: !GetAtt 'DeepLinkIndexRole.Arn'
+      Runtime: python3.8
+      Timeout: 5
+    Type: AWS::Serverless::Function
+  DeepLinkIndexRole:
+    Condition: UseDeepLinkIndexHtml
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - edgelambda.amazonaws.com
+        Version: '2012-10-17'
+      Policies:
+        - PolicyDocument:
+            Statement:
+              - Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect: Allow
+                Resource: arn:aws:logs:*:*:*
+            Version: '2012-10-17'
+          PolicyName: !Sub '${AWS::StackName}-DeepLinkIndexPolicy'
+    Type: AWS::IAM::Role
+  IPV4Record:
+    Condition: UseRoute53
+    Properties:
+      AliasTarget:
+        DNSName: !GetAtt 'WebsiteCloudfront.DomainName'
+        HostedZoneId: Z2FDTNDATAQYW2
+      HostedZoneId: !Ref 'HostedZoneId'
+      Name: !Ref 'DomainName'
+      Type: A
+    Type: AWS::Route53::RecordSet
+  IPV6Record:
+    Condition: UseRoute53
+    Properties:
+      AliasTarget:
+        DNSName: !GetAtt 'WebsiteCloudfront.DomainName'
+        HostedZoneId: Z2FDTNDATAQYW2
+      HostedZoneId: !Ref 'HostedZoneId'
+      Name: !Ref 'DomainName'
+      Type: AAAA
+    Type: AWS::Route53::RecordSet
+  NoStoreCacheFunction:
+    Condition: NoStoreCache
+    Properties:
+      AutoPublishAlias: live
+      CodeUri: functions/no-store-cache/
+      Handler: index.handler
+      Role: !GetAtt 'NoStoreCacheRole.Arn'
+      Runtime: python3.8
+      Timeout: 5
+    Type: AWS::Serverless::Function
+  NoStoreCacheRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - edgelambda.amazonaws.com
+            Sid: '0'
+        Version: '2012-10-17'
+      Policies:
+        - PolicyDocument:
+            Statement:
+              - Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Effect: Allow
+                Resource:
+                  - arn:aws:logs:*:*:*
+            Version: '2012-10-17'
+          PolicyName: !Sub '${AWS::StackName}-NoStoreCachePolicy'
+    Type: AWS::IAM::Role
+  SecurityHeadersFunction:
+    Properties:
+      AutoPublishAlias: live
+      CodeUri: functions/security-headers/
+      Handler: index.handler
+      Role: !GetAtt 'SecurityHeadersRole.Arn'
+      Runtime: python3.8
+      Timeout: 5
+    Type: AWS::Serverless::Function
+  SecurityHeadersRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - edgelambda.amazonaws.com
+            Sid: '0'
+        Version: '2012-10-17'
+      Policies:
+        - PolicyDocument:
+            Statement:
+              - Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Effect: Allow
+                Resource:
+                  - arn:aws:logs:*:*:*
+            Version: '2012-10-17'
+          PolicyName: !Sub '${AWS::StackName}-SecurityHeadersPolicy'
+    Type: AWS::IAM::Role
+  SiteDeploymentLayer:
+    Condition: UploadSiteSource
+    Properties:
+      Location:
+        ApplicationId: arn:aws:serverlessrepo:us-east-1:375983427419:applications/deploy-to-s3
+        SemanticVersion: 2.4.2
+    Type: AWS::Serverless::Application
+  SiteDeploymentResource:
+    Condition: UploadSiteSource
+    Properties:
+      Acl: private
+      CacheControlMaxAge: 600
+      ServiceToken: !GetAtt 'SiteSource.Arn'
+      TargetBucket: !Ref 'WebsiteBucket'
+      Version: !Ref 'SiteSource.Version'
+    Type: AWS::CloudFormation::CustomResource
+  SiteSource:
+    Condition: UploadSiteSource
+    Properties:
+      AutoPublishAlias: live
+      CodeUri: web-site/
+      Handler: deployer.resource_handler
+      Layers:
+        - !GetAtt 'SiteDeploymentLayer.Outputs.Arn'
+      Policies:
+        - S3FullAccessPolicy:
+            BucketName: !Ref 'WebsiteBucket'
+      Runtime: python3.8
+      Timeout: 600
+    Type: AWS::Serverless::Function
+  WebsiteBucket:
+    DeletionPolicy: Retain
+    Properties:
+      AccessControl: Private
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LoggingConfiguration: !If
+        - EnabledLogging
+        - DestinationBucketName: !Ref 'LoggingBucket'
+          LogFilePrefix: !If
+            - DefaultLoggingPrefix
+            - S3/
+            - !Sub '${LoggingPrefix}S3/'
+        - !Ref 'AWS::NoValue'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+    Type: AWS::S3::Bucket
+    UpdateReplacePolicy: Retain
+  WebsiteCloudfront:
+    Properties:
+      DistributionConfig:
+        Aliases: !If
+          - UseCustomDomainName
+          - - !Ref 'DomainName'
+          - !Ref 'AWS::NoValue'
+        CacheBehaviors:
+          - AllowedMethods:
+              - GET
+              - HEAD
+            CachedMethods:
+              - GET
+              - HEAD
+            ForwardedValues:
+              Cookies:
+                Forward: none
+              QueryString: false
+            PathPattern: /
+            TargetOriginId: S3Origin
+            ViewerProtocolPolicy: redirect-to-https
+        CustomErrorResponses: !If
+          - SinglePageErrorResponse
+          - - ErrorCode: 403
+              ResponseCode: 200
+              ResponsePagePath: /index.html
+            - ErrorCode: 404
+              ResponseCode: 200
+              ResponsePagePath: /index.html
+          - !If
+            - SeperateErrorResponse
+            - - ErrorCode: 403
+                ResponseCode: 403
+                ResponsePagePath: /403.html
+              - ErrorCode: 404
+                ResponseCode: 404
+                ResponsePagePath: /404.html
+            - !Ref 'AWS::NoValue'
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+          ForwardedValues:
+            Cookies:
+              Forward: none
+            QueryString: false
+          LambdaFunctionAssociations:
+            - !If
+              - UseDeepLinkIndexHtml
+              - EventType: origin-request
+                LambdaFunctionARN: !Ref 'DeepLinkIndexFunction.Version'
+              - !Ref 'AWS::NoValue'
+            - !If
+              - NoStoreCache
+              - EventType: origin-response
+                LambdaFunctionARN: !Ref 'NoStoreCacheFunction.Version'
+              - !Ref 'AWS::NoValue'
+            - !If
+              - UseSecurityHeaders
+              - EventType: origin-response
+                LambdaFunctionARN: !Ref 'SecurityHeadersFunction.Version'
+              - !Ref 'AWS::NoValue'
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+        DefaultRootObject: index.html
+        Enabled: true
+        IPV6Enabled: true
+        Logging: !If
+          - EnabledLogging
+          - Bucket: !Ref 'LoggingBucket'
+            IncludeCookies: false
+            Prefix: !If
+              - DefaultLoggingPrefix
+              - CloudFront/
+              - !Sub '${LoggingPrefix}CloudFront/'
+          - !Ref 'AWS::NoValue'
+        Origins:
+          - DomainName: !GetAtt 'WebsiteBucket.DomainName'
+            Id: S3Origin
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}'
+        ViewerCertificate:
+          AcmCertificateArn: !If
+            - UseCustomDomainName
+            - !Ref 'AcmCertificateArn'
+            - !Ref 'AWS::NoValue'
+          CloudFrontDefaultCertificate: !If
+            - DontUseCustomDomain
+            - true
+            - !Ref 'AWS::NoValue'
+          MinimumProtocolVersion: TLSv1.2_2019
+          SslSupportMethod: !If
+            - UseCustomDomainName
+            - sni-only
+            - !Ref 'AWS::NoValue'
+    Type: AWS::CloudFront::Distribution
+Transform: AWS::Serverless-2016-10-31
