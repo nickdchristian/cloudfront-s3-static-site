@@ -1,0 +1,5 @@
+.DS_Store
+.vscode/
+venv/
+web-site/
+samconfig.toml
