@@ -15,9 +15,9 @@ Conditions:
   NoStoreCache: !Equals
     - !Ref 'StoreCache'
     - 'false'
-  SeperateErrorResponse: !Equals
+  SeparateErrorResponse: !Equals
     - !Ref 'ErrorResponse'
-    - seperate
+    - separate
   SinglePageErrorResponse: !Equals
     - !Ref 'ErrorResponse'
     - single-page
@@ -63,10 +63,10 @@ Parameters:
   ErrorResponse:
     AllowedValues:
       - single-page
-      - seperate
+      - separate
       - none
     Description: Single-page applications can handle their own error responses. Single-page
-      returns 403 and 404 errors to /index.html as a 200 response, seperate points
+      returns 403 and 404 errors to /index.html as a 200 response, separate points
       those files to /403.html and /404.html respectively, none does not handle 403
       and 404 errors.
     Type: String
@@ -367,7 +367,7 @@ Resources:
               ResponseCode: 200
               ResponsePagePath: /index.html
           - !If
-            - SeperateErrorResponse
+            - SeparateErrorResponse
             - - ErrorCode: 403
                 ResponseCode: 403
                 ResponsePagePath: /403.html
