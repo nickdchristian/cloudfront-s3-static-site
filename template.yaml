@@ -1,5 +1,8 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Conditions:
+  UseRoute53AndRedirect: !And
+    - Condition: UseRoute53
+    - Condition: RedirectToRootDomain
   DefaultLoggingPrefix: !Not
     - !Equals
       - !Ref 'LoggingPrefix'
@@ -15,6 +18,9 @@ Conditions:
   NoStoreCache: !Equals
     - !Ref 'StoreCache'
     - 'false'
+  RedirectToRootDomain: !Equals
+    - !Ref 'WwwtoNonWwwRedirect'
+    - 'true'
   SeparateErrorResponse: !Equals
     - !Ref 'ErrorResponse'
     - separate
@@ -132,6 +138,14 @@ Parameters:
     Default: 'true'
     Description: If using a DNS service other than Route 53, set to false.
     Type: String
+  WwwtoNonWwwRedirect:
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Default: 'true'
+    Description: If set to true this redirects all requests from the WWW subdomain
+      to the root domain. Must have both domains in your ACM certificate.
+    Type: String
 Resources:
   BucketPolicy:
     Properties:
@@ -207,6 +221,26 @@ Resources:
         HostedZoneId: Z2FDTNDATAQYW2
       HostedZoneId: !Ref 'HostedZoneId'
       Name: !Ref 'DomainName'
+      Type: AAAA
+    Type: AWS::Route53::RecordSet
+  IPV4WwwRecord:
+    Condition: UseRoute53AndRedirect
+    Properties:
+      AliasTarget:
+        DNSName: !GetAtt 'WebsiteCloudfront.DomainName'
+        HostedZoneId: Z2FDTNDATAQYW2
+      HostedZoneId: !Ref 'HostedZoneId'
+      Name: !Sub 'www.${DomainName}'
+      Type: A
+    Type: AWS::Route53::RecordSet
+  IPV6WwwRecord:
+    Condition: UseRoute53AndRedirect
+    Properties:
+      AliasTarget:
+        DNSName: !GetAtt 'WebsiteCloudfront.DomainName'
+        HostedZoneId: Z2FDTNDATAQYW2
+      HostedZoneId: !Ref 'HostedZoneId'
+      Name: !Sub 'www.${DomainName}'
       Type: AAAA
     Type: AWS::Route53::RecordSet
   SecurityHeadersFunction:
@@ -308,6 +342,10 @@ Resources:
         Aliases: !If
           - UseCustomDomainName
           - - !Ref 'DomainName'
+            - !If
+              - RedirectToRootDomain
+              - !Sub 'www.${DomainName}'
+              - !Ref 'AWS::NoValue'
           - !Ref 'AWS::NoValue'
         CacheBehaviors:
           - AllowedMethods:
@@ -362,6 +400,11 @@ Resources:
               - UseSecurityHeaders
               - EventType: origin-response
                 LambdaFunctionARN: !Ref 'SecurityHeadersFunction.Version'
+              - !Ref 'AWS::NoValue'
+            - !If
+              - RedirectToRootDomain
+              - EventType: viewer-request
+                LambdaFunctionARN: !Ref 'WwwToRootFunction.Version'
               - !Ref 'AWS::NoValue'
           TargetOriginId: S3Origin
           ViewerProtocolPolicy: redirect-to-https
@@ -420,4 +463,42 @@ Resources:
           QueryStringsConfig:
             QueryStringBehavior: none
     Type: AWS::CloudFront::CachePolicy
+  WwwToRootFunction:
+    Condition: RedirectToRootDomain
+    Properties:
+      AutoPublishAlias: live
+      CodeUri: functions/www-to-root-redirect/
+      Handler: index.handler
+      Role: !GetAtt 'WwwToRootFunctionRole.Arn'
+      Runtime: python3.8
+      Timeout: 5
+    Type: AWS::Serverless::Function
+  WwwToRootFunctionRole:
+    Condition: RedirectToRootDomain
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - edgelambda.amazonaws.com
+            Sid: '0'
+        Version: '2012-10-17'
+      Policies:
+        - PolicyDocument:
+            Statement:
+              - Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Effect: Allow
+                Resource:
+                  - arn:aws:logs:*:*:*
+            Version: '2012-10-17'
+          PolicyName: !Sub '${AWS::StackName}-SecurityHeadersPolicy'
+    Type: AWS::IAM::Role
 Transform: AWS::Serverless-2016-10-31
