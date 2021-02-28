@@ -18,20 +18,21 @@ Once configured, install SAM CLI in order to deploy the CloudFormation template.
 
 ### Parameters
 
-| Name              |                         Description                          | Type | AllowedValues/Pattern | Default |
-| :---------------: | :----------------------------------------------------------: | :--: | :--------------------------: | :-----: |
-| AcmCertificateArn | The Amazon Resource Name (ARN) of an AWS Certificate Manager (ACM) for your domain name certificate. |  String    |  N/A                            |      N/A   |
-|   DomainName                |       The DNS name of the website, such as example.com.                     | String     |       N/A                       |    N/A     |
-|        ErrorResponse           |        Single-page applications can handle their own error responses. Single-page returns 403 and 404 errors to /index.html as a 200 response, seperate points those files to /403.html and /404.html respectively, none does not handle 403 and 404 errors.                                                      |  String    |                single-page, separate, none              |      N/A   |
-|            HostedZoneId       |        The ID of the Hosted Zone of the domain name.                                                      |    AWS::Route53::HostedZone::Id  |               N/A               |      N/A   |
-|       LoggingBucket            |        Name of the logging bucket where CloudFront and S3  will reside. If a logging bucket is not specified, logging will be disabled.                                                      |   String   |           N/A                   |         |
-|      LoggingPrefix             |       An optional string to prefix the log filenames in the logging bucket. S3/ or CloudFront/ will automatically prefix the log filenames, for example S3 bucket  will prefixed as YourPrefix/S3/.                                                       |    String  |          .*\/$                    |     /    |
-|      StoreCache             |      Set to false to not store cache.                                                        |    String  |         true, false                     |     true    |
-|       UploadWebsiteSource            |        The custom resource will fail to upload if the website source is too big. Set this to false to disable it.                                                      |    String  |                true, false              |      true   |
-|       UseCustomDomain            |         If there is a custom domain being used with this set, set to true.                                                     |   String   |          true, false                  |     true    |
-|       UseHttpSecurityHeaders            |        HTTP security headers mitigate attacks and harden against security vulnerabilities. Tailor the function in functions/security-headers/ to the needs of the website for full protection.                                                      |  String    |              true, false                |     true    |
-|        UseIndexHtmlOnDeepLinks           |      Some static site generators always use index.html on the end of their deep links. Using this Lambda edge function example.com/foo/index.html will become example.com/foo/.                                                        |    String  |          true, false                    |     false    |
-|     UseRoute53ForDNS              |    If using a DNS service other than Route 53, set to false.                                                          |   String   | true, false                             |  true     |
+| Name                    | Description                                                  | AllowedValues/Pattern                           | Default        |
+| ----------------------- | ------------------------------------------------------------ | ----------------------------------------------- | -------------- |
+| AcmCertificateArn       | The Amazon Resource Name (ARN) of an AWS Certificate Manager (ACM) for your domain name certificate. | N/A                                             | N/A            |
+| DomainName              | The DNS name of the website, such as example.com.            | N/A                                             | N/A            |
+| ErrorResponse           | Single-page applications can handle their own error responses. Single-page returns 403 and 404 errors to /index.html as a 200 response, seperate points those files to /403.html and /404.html respectively, none does not handle 403 and 404 errors. | single-page, separate, none                     | N/A            |
+| HostedZoneId            | The ID of the Hosted Zone of the domain name.                | N/A                                             | N/A            |
+| LoggingBucket           | Name of the logging bucket where CloudFront and S3  will reside. If a logging bucket is not specified, logging will be disabled. | N/A                                             |                |
+| LoggingPrefix           | An optional string to prefix the log filenames in the logging bucket. S3/ or CloudFront/ will automatically prefix the log filenames, for example S3 bucket  will prefixed as YourPrefix/S3/. | .*\/$                                           | /              |
+| PriceClass              | The price class for the CloudFront distribution determines what edge locations are utilized and costs. Go to https://aws.amazon.com/cloudfront/pricing/ to learn more about price classes and other CloudFront costs. | PriceClass_100, PriceClass_200, PriceClass_ All | PriceClass_all |
+| StoreCache              | Set to false to not store cache.                             | true, false                                     | true           |
+| UploadWebsiteSource     | The custom resource will fail to upload if the website source is too big. Set this to false to disable it. | true, false                                     | true           |
+| UseCustomDomain         | If there is a custom domain being used with this set, set to true. | true, false                                     | true           |
+| UseHttpSecurityHeaders  | HTTP security headers mitigate attacks and harden against security vulnerabilities. Tailor the function in functions/security-headers/ to the needs of the website for full protection. | true, false                                     | true           |
+| UseIndexHtmlOnDeepLinks | Some static site generators always use index.html on the end of their deep links. Using this Lambda edge function example.com/foo/index.html will become example.com/foo/. | true, false                                     | false          |
+| UseRoute53ForDNS        | If using a DNS service other than Route 53, set to false.    | true, false                                     | true           |
 
 ### Deployment
 
