@@ -47,7 +47,7 @@ Outputs:
     Value: !Ref 'WebsiteBucket'
   CloudFrontUrl:
     Description: HTTPS CloudFront URL for the website
-    Value: !Sub 'https://WebsiteCloudfront.DomainName'
+    Value: !Sub 'https://${WebsiteCloudfront.DomainName}'
   WebsiteUrl:
     Condition: UseRoute53
     Description: HTTPS URL For the website through the provided domain name
