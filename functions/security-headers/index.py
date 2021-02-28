@@ -1,4 +1,5 @@
 def handler(event, context):
+    """ Adds HTTP security headers to CloudFront. Will need to be adapted for your website."""
     response = event["Records"][0]["cf"]["response"]
     headers = response["headers"]
 
