@@ -209,44 +209,8 @@ Resources:
       Name: !Ref 'DomainName'
       Type: AAAA
     Type: AWS::Route53::RecordSet
-  NoStoreCacheFunction:
-    Condition: NoStoreCache
-    Properties:
-      AutoPublishAlias: live
-      CodeUri: functions/no-store-cache/
-      Handler: index.handler
-      Role: !GetAtt 'NoStoreCacheRole.Arn'
-      Runtime: python3.8
-      Timeout: 5
-    Type: AWS::Serverless::Function
-  NoStoreCacheRole:
-    Properties:
-      AssumeRolePolicyDocument:
-        Statement:
-          - Action:
-              - sts:AssumeRole
-            Effect: Allow
-            Principal:
-              Service:
-                - lambda.amazonaws.com
-                - edgelambda.amazonaws.com
-            Sid: '0'
-        Version: '2012-10-17'
-      Policies:
-        - PolicyDocument:
-            Statement:
-              - Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                  - logs:DescribeLogStreams
-                Effect: Allow
-                Resource:
-                  - arn:aws:logs:*:*:*
-            Version: '2012-10-17'
-          PolicyName: !Sub '${AWS::StackName}-NoStoreCachePolicy'
-    Type: AWS::IAM::Role
   SecurityHeadersFunction:
+    Condition: UseSecurityHeaders
     Properties:
       AutoPublishAlias: live
       CodeUri: functions/security-headers/
@@ -256,6 +220,7 @@ Resources:
       Timeout: 5
     Type: AWS::Serverless::Function
   SecurityHeadersRole:
+    Condition: UseSecurityHeaders
     Properties:
       AssumeRolePolicyDocument:
         Statement:
@@ -379,6 +344,10 @@ Resources:
           AllowedMethods:
             - GET
             - HEAD
+          CachePolicyId: !If
+            - NoStoreCache
+            - !Ref 'WebsiteCloudfrontNoCachePolicy'
+            - !Ref 'AWS::NoValue'
           ForwardedValues:
             Cookies:
               Forward: none
@@ -388,11 +357,6 @@ Resources:
               - UseDeepLinkIndexHtml
               - EventType: origin-request
                 LambdaFunctionARN: !Ref 'DeepLinkIndexFunction.Version'
-              - !Ref 'AWS::NoValue'
-            - !If
-              - NoStoreCache
-              - EventType: origin-response
-                LambdaFunctionARN: !Ref 'NoStoreCacheFunction.Version'
               - !Ref 'AWS::NoValue'
             - !If
               - UseSecurityHeaders
@@ -433,4 +397,27 @@ Resources:
             - sni-only
             - !Ref 'AWS::NoValue'
     Type: AWS::CloudFront::Distribution
+  WebsiteCloudfrontNoCachePolicy:
+    Condition: NoStoreCache
+    Properties:
+      CachePolicyConfig:
+        DefaultTTL: 0
+        MaxTTL: 0
+        MinTTL: 0
+        Name: !Sub
+          - ${AWS::StackName}-NoStoreCachePolicy-${StackId}
+          - StackId: !Select
+              - 2
+              - !Split
+                - /
+                - !Ref 'AWS::StackId'
+        ParametersInCacheKeyAndForwardedToOrigin:
+          CookiesConfig:
+            CookieBehavior: none
+          EnableAcceptEncodingGzip: false
+          HeadersConfig:
+            HeaderBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+    Type: AWS::CloudFront::CachePolicy
 Transform: AWS::Serverless-2016-10-31
