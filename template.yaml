@@ -420,6 +420,7 @@ Resources:
           ViewerProtocolPolicy: redirect-to-https
         DefaultRootObject: index.html
         Enabled: true
+        HttpVersion: http2
         IPV6Enabled: true
         Logging: !If
           - EnabledLogging
