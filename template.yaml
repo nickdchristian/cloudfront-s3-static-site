@@ -1,8 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Conditions:
-  UseRoute53AndRedirect: !And
-    - Condition: UseRoute53
-    - Condition: RedirectToRootDomain
   DefaultLoggingPrefix: !Not
     - !Equals
       - !Ref 'LoggingPrefix'
@@ -19,7 +16,7 @@ Conditions:
     - !Ref 'StoreCache'
     - 'false'
   RedirectToRootDomain: !Equals
-    - !Ref 'WwwtoNonWwwRedirect'
+    - !Ref 'RedirectToNonWww'
     - 'true'
   SeparateErrorResponse: !Equals
     - !Ref 'ErrorResponse'
@@ -39,6 +36,9 @@ Conditions:
   UseRoute53: !Equals
     - !Ref 'UseRoute53ForDNS'
     - 'true'
+  UseRoute53AndRedirect: !And
+    - !Condition 'UseRoute53'
+    - !Condition 'RedirectToRootDomain'
   UseSecurityHeaders: !Equals
     - !Ref 'UseHttpSecurityHeaders'
     - 'true'
@@ -91,6 +91,24 @@ Parameters:
       S3/ or CloudFront/ will automatically prefix the log filenames, for example
       S3 bucket  will prefixed as YourPrefix/S3/.
     Type: String
+  PriceClass:
+    AllowedValues:
+      - PriceClass_100
+      - PriceClass_200
+      - PriceClass_All
+    Default: PriceClass_All
+    Description: The price class for the CloudFront distribution determines what edge
+      locations are utilized and costs. Go to https://aws.amazon.com/cloudfront/pricing/
+      to learn more about price classes and other CloudFront costs.
+    Type: String
+  RedirectToNonWww:
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Default: 'true'
+    Description: If set to true this redirects all requests from the WWW subdomain
+      to the base domain. Must have both domains in your ACM certificate.
+    Type: String
   StoreCache:
     AllowedValues:
       - 'true'
@@ -137,14 +155,6 @@ Parameters:
       - 'false'
     Default: 'true'
     Description: If using a DNS service other than Route 53, set to false.
-    Type: String
-  WwwtoNonWwwRedirect:
-    AllowedValues:
-      - 'true'
-      - 'false'
-    Default: 'true'
-    Description: If set to true this redirects all requests from the WWW subdomain
-      to the root domain. Must have both domains in your ACM certificate.
     Type: String
 Resources:
   BucketPolicy:
@@ -213,16 +223,6 @@ Resources:
       Name: !Ref 'DomainName'
       Type: A
     Type: AWS::Route53::RecordSet
-  IPV6Record:
-    Condition: UseRoute53
-    Properties:
-      AliasTarget:
-        DNSName: !GetAtt 'WebsiteCloudfront.DomainName'
-        HostedZoneId: Z2FDTNDATAQYW2
-      HostedZoneId: !Ref 'HostedZoneId'
-      Name: !Ref 'DomainName'
-      Type: AAAA
-    Type: AWS::Route53::RecordSet
   IPV4WwwRecord:
     Condition: UseRoute53AndRedirect
     Properties:
@@ -232,6 +232,16 @@ Resources:
       HostedZoneId: !Ref 'HostedZoneId'
       Name: !Sub 'www.${DomainName}'
       Type: A
+    Type: AWS::Route53::RecordSet
+  IPV6Record:
+    Condition: UseRoute53
+    Properties:
+      AliasTarget:
+        DNSName: !GetAtt 'WebsiteCloudfront.DomainName'
+        HostedZoneId: Z2FDTNDATAQYW2
+      HostedZoneId: !Ref 'HostedZoneId'
+      Name: !Ref 'DomainName'
+      Type: AAAA
     Type: AWS::Route53::RecordSet
   IPV6WwwRecord:
     Condition: UseRoute53AndRedirect
@@ -425,6 +435,7 @@ Resources:
             Id: S3Origin
             S3OriginConfig:
               OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}'
+        PriceClass: !Ref 'PriceClass'
         ViewerCertificate:
           AcmCertificateArn: !If
             - UseCustomDomainName
