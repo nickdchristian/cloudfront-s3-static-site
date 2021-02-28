@@ -132,10 +132,6 @@ Parameters:
     Default: 'true'
     Description: If using a DNS service other than Route 53, set to false.
     Type: String
-  WebsitePath:
-    Default: 'web-site/'
-    Description: The relative path to the contents of the website. Leave blank if uploading separately.
-    Type: String
 Resources:
   BucketPolicy:
     Properties:
