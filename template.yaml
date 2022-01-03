@@ -12,38 +12,34 @@ Conditions:
     - !Equals
       - !Ref 'LoggingBucket'
       - ''
+  Legacy: !Equals
+    - !Ref 'ArchitectureType'
+    - legacy
   NoStoreCache: !Equals
     - !Ref 'StoreCache'
     - 'false'
-  RedirectToRootDomain: !Equals
-    - !Ref 'RedirectToNonWww'
+  Redirect: !Equals
+    - !Ref 'RedirectFunctionality'
     - 'true'
-  SeparateErrorResponse: !Equals
-    - !Ref 'ErrorResponse'
-    - separate
-  SinglePageErrorResponse: !Equals
-    - !Ref 'ErrorResponse'
-    - single-page
+  SinglePage: !Equals
+    - !Ref 'ArchitectureType'
+    - spa
   UploadSiteSource: !Equals
     - !Ref 'UploadWebsiteSource'
     - 'true'
   UseCustomDomainName: !Equals
     - !Ref 'UseCustomDomain'
     - 'true'
-  UseDeepLinkIndexHtml: !Equals
-    - !Ref 'UseIndexHtmlOnDeepLinks'
+  UseCustomHeaders: !Equals
+    - !Ref 'UseHttpCustomHeaders'
     - 'true'
   UseRoute53: !Equals
     - !Ref 'UseRoute53ForDNS'
     - 'true'
   UseRoute53AndRedirect: !And
     - !Condition 'UseRoute53'
-    - !Condition 'RedirectToRootDomain'
-  UseSecurityHeaders: !Equals
-    - !Ref 'UseHttpSecurityHeaders'
-    - 'true'
-Description: Creates a CloudFront distribution with an S3 origin to host a static
-  website.
+    - !Condition 'Redirect'
+Description: Creates a CloudFront distribution with an S3 origin to host a static website.
 Outputs:
   BucketArn:
     Description: ARN of the S3 website bucket.
@@ -60,36 +56,31 @@ Outputs:
     Value: !Sub 'https://${DomainName}'
 Parameters:
   AcmCertificateArn:
-    Description: The Amazon Resource Name (ARN) of an AWS Certificate Manager (ACM)
-      for your domain name certificate.
+    Description: The Amazon Resource Name (ARN) of an AWS Certificate Manager (ACM) for your domain name certificate.
+    Type: String
+  ArchitectureType:
+    AllowedValues:
+      - spa
+      - legacy
+      - none
+    default: spa
+    Description: Single Page Applications (SPA) can handle their own error responses, as well as default to index.html the end of every path. Legacy has its own error response pages, assumed here to be
+      404.html and 4.3.html.
     Type: String
   DomainName:
     Description: The DNS name of the website, such as example.com.
-    Type: String
-  ErrorResponse:
-    AllowedValues:
-      - single-page
-      - separate
-      - none
-    Description: Single-page applications can handle their own error responses. Single-page
-      returns 403 and 404 errors to /index.html as a 200 response, separate points
-      those files to /403.html and /404.html respectively, none does not handle 403
-      and 404 errors.
     Type: String
   HostedZoneId:
     Description: The ID of the Hosted Zone of the domain name.
     Type: AWS::Route53::HostedZone::Id
   LoggingBucket:
     Default: ''
-    Description: Name of the logging bucket where CloudFront and S3  will reside.
-      If a logging bucket is not specified, logging will be disabled.
+    Description: Name of the logging bucket where CloudFront and S3  will reside. If a logging bucket is not specified, logging will be disabled.
     Type: String
   LoggingPrefix:
     AllowedPattern: .*\/$
     Default: /
-    Description: An optional string to prefix the log filenames in the logging bucket.
-      S3/ or CloudFront/ will automatically prefix the log filenames, for example
-      S3 bucket  will prefixed as YourPrefix/S3/.
+    Description: An optional string to prefix the log filenames in the logging bucket. S3/ or CloudFront/ will automatically prefix the log filenames, for example S3 bucket  will prefixed as YourPrefix/S3/.
     Type: String
   PriceClass:
     AllowedValues:
@@ -97,17 +88,16 @@ Parameters:
       - PriceClass_200
       - PriceClass_All
     Default: PriceClass_All
-    Description: The price class for the CloudFront distribution determines what edge
-      locations are utilized and costs. Go to https://aws.amazon.com/cloudfront/pricing/
-      to learn more about price classes and other CloudFront costs.
+    Description: The price class for the CloudFront distribution determines what edge locations are utilized and costs. Go to https://aws.amazon.com/cloudfront/pricing/ to learn more about price classes.
+      and other CloudFront costs.
     Type: String
-  RedirectToNonWww:
+  RedirectFunctionality:
     AllowedValues:
       - 'true'
       - 'false'
     Default: 'true'
-    Description: If set to true this redirects all requests from the WWW subdomain
-      to the base domain. Must have both domains in your ACM certificate.
+    Description: If set to true this redirects all requests from the www subdomain to the base domain. Must have both domains in your ACM certificate. Addtional redirect functionality can be added or changed
+      in the RedirectFunction resource.
     Type: String
   StoreCache:
     AllowedValues:
@@ -121,8 +111,7 @@ Parameters:
       - 'true'
       - 'false'
     Default: 'true'
-    Description: The custom resource will fail to upload if the website source is
-      too big. Set this to false to disable it.
+    Description: The custom resource will fail to upload if the website source is too big. Set this to false to disable it.
     Type: String
   UseCustomDomain:
     AllowedValues:
@@ -131,23 +120,12 @@ Parameters:
     Default: 'true'
     Description: If there is a custom domain being used with this set, set to true.
     Type: String
-  UseHttpSecurityHeaders:
+  UseHttpCustomHeaders:
     AllowedValues:
       - 'true'
       - 'false'
     Default: 'true'
-    Description: HTTP security headers mitigate attacks and harden against security
-      vulnerabilities. Tailor the function in functions/security-headers/ to the needs
-      of the website for full protection.
-    Type: String
-  UseIndexHtmlOnDeepLinks:
-    AllowedValues:
-      - 'true'
-      - 'false'
-    Default: 'false'
-    Description: Some static site generators always use index.html on the end of their
-      deep links. Using this Lambda edge function example.com/foo/index.html will
-      become example.com/foo/.
+    Description: Adds several common HTTP security headers to the response from CloudFront. Other headers and CORS may be added to this function too.
     Type: String
   UseRoute53ForDNS:
     AllowedValues:
@@ -178,41 +156,36 @@ Resources:
       CloudFrontOriginAccessIdentityConfig:
         Comment: !Sub 'Access identity for ${WebsiteBucket}'
     Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
-  DeepLinkIndexFunction:
-    Condition: UseDeepLinkIndexHtml
+  CustomResponseHeadersPolicy:
+    Condition: UseCustomHeaders
     Properties:
-      AutoPublishAlias: live
-      CodeUri: functions/deeplink-index/
-      Handler: index.handler
-      Role: !GetAtt 'DeepLinkIndexRole.Arn'
-      Runtime: python3.8
-      Timeout: 5
-    Type: AWS::Serverless::Function
-  DeepLinkIndexRole:
-    Condition: UseDeepLinkIndexHtml
-    Properties:
-      AssumeRolePolicyDocument:
-        Statement:
-          - Action:
-              - sts:AssumeRole
-            Effect: Allow
-            Principal:
-              Service:
-                - lambda.amazonaws.com
-                - edgelambda.amazonaws.com
-        Version: '2012-10-17'
-      Policies:
-        - PolicyDocument:
-            Statement:
-              - Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Effect: Allow
-                Resource: arn:aws:logs:*:*:*
-            Version: '2012-10-17'
-          PolicyName: !Sub '${AWS::StackName}-DeepLinkIndexPolicy'
-    Type: AWS::IAM::Role
+      ResponseHeadersPolicyConfig:
+        Name: !Sub '${AWS::StackName}-CustomHeadersPolicy'
+        SecurityHeadersConfig:
+          ContentSecurityPolicy:
+            ContentSecurityPolicy: default-src 'none'; img-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; frame-ancestors 'none'
+            Override: true
+          ContentTypeOptions:
+            Override: true
+          FrameOptions:
+            FrameOption: DENY
+            Override: true
+          ReferrerPolicy:
+            Override: true
+            ReferrerPolicy: same-origin
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: !If
+              - NoStoreCache
+              - 0
+              - 63072000
+            IncludeSubdomains: true
+            Override: true
+            Preload: true
+          XSSProtection:
+            ModeBlock: true
+            Override: true
+            Protection: true
+    Type: AWS::CloudFront::ResponseHeadersPolicy
   IPV4Record:
     Condition: UseRoute53
     Properties:
@@ -253,44 +226,34 @@ Resources:
       Name: !Sub 'www.${DomainName}'
       Type: AAAA
     Type: AWS::Route53::RecordSet
-  SecurityHeadersFunction:
-    Condition: UseSecurityHeaders
+  RedirectFunction:
+    Condition: Redirect
     Properties:
-      AutoPublishAlias: live
-      CodeUri: functions/security-headers/
-      Handler: index.handler
-      Role: !GetAtt 'SecurityHeadersRole.Arn'
-      Runtime: python3.8
-      Timeout: 5
-    Type: AWS::Serverless::Function
-  SecurityHeadersRole:
-    Condition: UseSecurityHeaders
-    Properties:
-      AssumeRolePolicyDocument:
-        Statement:
-          - Action:
-              - sts:AssumeRole
-            Effect: Allow
-            Principal:
-              Service:
-                - lambda.amazonaws.com
-                - edgelambda.amazonaws.com
-            Sid: '0'
-        Version: '2012-10-17'
-      Policies:
-        - PolicyDocument:
-            Statement:
-              - Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                  - logs:DescribeLogStreams
-                Effect: Allow
-                Resource:
-                  - arn:aws:logs:*:*:*
-            Version: '2012-10-17'
-          PolicyName: !Sub '${AWS::StackName}-SecurityHeadersPolicy'
-    Type: AWS::IAM::Role
+      AutoPublish: true
+      FunctionCode: |
+        function handler(event) {
+            var request = event.request;
+            var host = request.headers.host.value;
+            var uri = request.uri;
+            var newurl = host.replace('www.','')
+
+            if (host.startsWith('www.')) {
+                    var response = {
+                    statusCode: 302,
+                        statusDescription: 'Found',
+                    headers:
+                            { "location": { "value": `https://${newurl}${uri}`} }
+                    }
+
+                    return response;
+            }
+            return request;
+        }
+      FunctionConfig:
+        Comment: !Sub 'Handles all redirect logic'
+        Runtime: cloudfront-js-1.0
+      Name: !Sub '${AWS::StackName}-RedirectFunction'
+    Type: AWS::CloudFront::Function
   SiteDeploymentLayer:
     Condition: UploadSiteSource
     Properties:
@@ -353,7 +316,7 @@ Resources:
           - UseCustomDomainName
           - - !Ref 'DomainName'
             - !If
-              - RedirectToRootDomain
+              - Redirect
               - !Sub 'www.${DomainName}'
               - !Ref 'AWS::NoValue'
           - !Ref 'AWS::NoValue'
@@ -372,7 +335,7 @@ Resources:
             TargetOriginId: S3Origin
             ViewerProtocolPolicy: redirect-to-https
         CustomErrorResponses: !If
-          - SinglePageErrorResponse
+          - SinglePage
           - - ErrorCode: 403
               ResponseCode: 200
               ResponsePagePath: /index.html
@@ -380,7 +343,7 @@ Resources:
               ResponseCode: 200
               ResponsePagePath: /index.html
           - !If
-            - SeparateErrorResponse
+            - Legacy
             - - ErrorCode: 403
                 ResponseCode: 403
                 ResponsePagePath: /403.html
@@ -400,22 +363,16 @@ Resources:
             Cookies:
               Forward: none
             QueryString: false
-          LambdaFunctionAssociations:
+          FunctionAssociations:
             - !If
-              - UseDeepLinkIndexHtml
-              - EventType: origin-request
-                LambdaFunctionARN: !Ref 'DeepLinkIndexFunction.Version'
-              - !Ref 'AWS::NoValue'
-            - !If
-              - UseSecurityHeaders
-              - EventType: origin-response
-                LambdaFunctionARN: !Ref 'SecurityHeadersFunction.Version'
-              - !Ref 'AWS::NoValue'
-            - !If
-              - RedirectToRootDomain
+              - Redirect
               - EventType: viewer-request
-                LambdaFunctionARN: !Ref 'WwwToRootFunction.Version'
+                FunctionARN: !GetAtt 'RedirectFunction.FunctionMetadata.FunctionARN'
               - !Ref 'AWS::NoValue'
+          ResponseHeadersPolicyId: !If
+            - UseCustomHeaders
+            - !Ref 'CustomResponseHeadersPolicy'
+            - !Ref 'AWS::NoValue'
           TargetOriginId: S3Origin
           ViewerProtocolPolicy: redirect-to-https
         DefaultRootObject: index.html
@@ -446,7 +403,7 @@ Resources:
             - DontUseCustomDomain
             - true
             - !Ref 'AWS::NoValue'
-          MinimumProtocolVersion: TLSv1.2_2019
+          MinimumProtocolVersion: TLSv1.2_2021
           SslSupportMethod: !If
             - UseCustomDomainName
             - sni-only
@@ -475,42 +432,4 @@ Resources:
           QueryStringsConfig:
             QueryStringBehavior: none
     Type: AWS::CloudFront::CachePolicy
-  WwwToRootFunction:
-    Condition: RedirectToRootDomain
-    Properties:
-      AutoPublishAlias: live
-      CodeUri: functions/www-to-root-redirect/
-      Handler: index.handler
-      Role: !GetAtt 'WwwToRootFunctionRole.Arn'
-      Runtime: python3.8
-      Timeout: 5
-    Type: AWS::Serverless::Function
-  WwwToRootFunctionRole:
-    Condition: RedirectToRootDomain
-    Properties:
-      AssumeRolePolicyDocument:
-        Statement:
-          - Action:
-              - sts:AssumeRole
-            Effect: Allow
-            Principal:
-              Service:
-                - lambda.amazonaws.com
-                - edgelambda.amazonaws.com
-            Sid: '0'
-        Version: '2012-10-17'
-      Policies:
-        - PolicyDocument:
-            Statement:
-              - Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                  - logs:DescribeLogStreams
-                Effect: Allow
-                Resource:
-                  - arn:aws:logs:*:*:*
-            Version: '2012-10-17'
-          PolicyName: !Sub '${AWS::StackName}-SecurityHeadersPolicy'
-    Type: AWS::IAM::Role
 Transform: AWS::Serverless-2016-10-31
