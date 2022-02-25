@@ -63,7 +63,7 @@ Parameters:
       - spa
       - legacy
       - none
-    default: spa
+    Default: spa
     Description: Single Page Applications (SPA) can handle their own error responses, as well as default to index.html the end of every path. Legacy has its own error response pages, assumed here to be
       404.html and 4.3.html.
     Type: String
